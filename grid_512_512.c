@@ -7,7 +7,7 @@
 #define ETA 0.0002
 #define RHO 0.5
 #define G 0.75
-#define SIZE 8
+#define SIZE 4
 #define STRIKEX SIZE/2
 #define STRIKEY SIZE/2
 
@@ -57,9 +57,6 @@ int main(int argc, char** argv) {
 
     //calculating how many rows each process is responsible for
     int workEach = SIZE / numProcess;
-
-
-    //printf("WorkEach: %d\n",workEach);
 
     //once we know how much each is responsible for, we use the rank
     //to determine the row for each process
@@ -121,16 +118,6 @@ int main(int argc, char** argv) {
             bottomIndex = column;
           }
 
-          // 00 01 02 03 04 05 06 07 RNK 1
-          // 08 09 10 11 12 13 14 15
-          // 16 17 18 19 20 21 22 23
-          // 24 25 26 27 28 29 30 31
-          //--------------------------
-          // 32 33 34 35 36 37 38 39
-          // 40 41 42 43 44 45 46 47
-          // 48 49 50 51 52 53 54 55
-          // 56 57 58 59 60 61 62 63
-
           int topIndex = (startRow-1) * SIZE + column;
           float*topPtr = prevValues;
           if(topIndex<0){
@@ -150,7 +137,6 @@ int main(int argc, char** argv) {
           float newValue = RHO * (leftValue + rightValue + bottomValue + topValue-4 * prevValue) + 2 * prevValue - (1-ETA) * prevPrevValue;
           *(currentValues+currentIndex)=newValue;
       }
-
         startRow++;
       }
 
