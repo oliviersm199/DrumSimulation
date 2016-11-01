@@ -1,4 +1,3 @@
-// Adapted from code at mpitutorial.com
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,20 +43,20 @@ int main(int argc, char** argv) {
      	grid[i]=0;
      }
     //}
-    // each 16 processes will be mapped to a particular point. 
-    //    0  1   2    3 
-    //    4  5   6    7 
-    //    8  9   10   11 
+    // each 16 processes will be mapped to a particular point.
+    //    0  1   2    3
+    //    4  5   6    7
+    //    8  9   10   11
     //    12 13  14   15
 
-    int xPosition = rank % SIZE; // get the x value 
+    int xPosition = rank % SIZE; // get the x value
     int yPosition = rank / SIZE; // get the y value
 
     MPI_Request request;
     MPI_Status status;
 
 
-    // set the default starting value of the drum to zero. 
+    // set the default starting value of the drum to zero.
     // otherwise set to 1 if at position SIZE/2
     double value = 0.0;
     if(xPosition==SIZE/2 && yPosition == SIZE/2){
@@ -76,8 +75,8 @@ int main(int argc, char** argv) {
     //starting the iterations of the drum
     for(long i =0;i<iterations;i++){
         //send your data
-        //wait to receive your data. 
-        //when you have received your data, 
+        //wait to receive your data.
+        //when you have received your data,
 
 
 
@@ -106,7 +105,7 @@ int main(int argc, char** argv) {
         else if(xPosition==SIZE-1 && yPosition >=1 && yPosition <= SIZE-2){
 
         }
-        //left side 
+        //left side
         else if(yPosition==0 && xPosition >=1 && xPosition <= SIZE-2){
 
         }
@@ -135,12 +134,12 @@ int main(int argc, char** argv) {
 	    	for (int j =0; j <4;j++){
 	    	printf("%d--(%d,%d) ",grid[x],i,j);
 	    	x++;
-	    	//printf("%d",rank);	
+	    	//printf("%d",rank);
 	    	}
 	    	printf("\n");
 	    }
 	}
-    
+
 
     // Finalize the MPI environment.
     MPI_Finalize();
