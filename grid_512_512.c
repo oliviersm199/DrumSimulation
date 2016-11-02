@@ -7,7 +7,7 @@
 #define ETA 0.0002
 #define RHO 0.5
 #define G 0.75
-#define SIZE 512
+#define SIZE 4
 #define STRIKEX SIZE/2
 #define STRIKEY SIZE/2
 
@@ -52,9 +52,6 @@ int main(int argc, char** argv) {
     // Get the rank of the process
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-:q
-:q
 
     //calculating how many rows each process is responsible for
     int workEach = SIZE / numProcess;
@@ -134,9 +131,7 @@ int main(int argc, char** argv) {
 
           int currentIndex = (startRow) * SIZE + column;
 
-
-
-          //printf("Left:(%d,%.5f) Right:(%d,%.5f) Bottom:(%d,%.5f) Top:(%d,%.5f) Prev:(%d,%.5f), PrevPrevValues %.5f\n",leftIndex, *(prevValues+leftIndex),rightIndex,*(prevValues+rightIndex), bottomIndex,*(bottomPtr+bottomIndex),topIndex,*(topPtr+topIndex),currentIndex,*(prevValues+currentIndex),*(prevprevValues+currentIndex));
+          //printf("Left:(%d,%.6f) Right:(%d,%.6f) Bottom:(%d,%.6f) Top:(%d,%.6f) Prev:(%d,%.6f), PrevPrevValues %.6f\n",leftIndex, *(prevValues+leftIndex),rightIndex,*(prevValues+rightIndex), bottomIndex,*(bottomPtr+bottomIndex),topIndex,*(topPtr+topIndex),currentIndex,*(prevValues+currentIndex),*(prevprevValues+currentIndex));
           float leftValue = *(prevValues+leftIndex);
           float rightValue = *(prevValues+rightIndex);
           float bottomValue = *(bottomPtr+bottomIndex);
@@ -145,7 +140,7 @@ int main(int argc, char** argv) {
           float prevPrevValue = *(prevprevValues+currentIndex);
           float newValue = ((RHO * (leftValue + rightValue + bottomValue + topValue- 4 * prevValue)) + 2 * prevValue - (1-ETA) * prevPrevValue)/(1 + ETA);
           *(currentValues+currentIndex)=newValue;
-          //printf("Value %.6f, Position: %d Rank %d\n",*(currentValues+currentIndex),SIZE*SIZE/numProcess*rank+currentIndex,rank);
+          //printf("Iteration: %d Value %.6f, Position: %d Rank %d\n",i,*(currentValues+currentIndex),SIZE*SIZE/numProcess*rank+currentIndex,rank);
       }
         startRow++;
       }
@@ -205,26 +200,22 @@ int main(int argc, char** argv) {
       MPI_Barrier(MPI_COMM_WORLD);
       //top corners
       if(rank == 0){
-        *(currentValues) = G * (*(currentValues + SIZE));
-        *(currentValues+SIZE-1) = G * (*(currentValues + 2 * SIZE -1));
-        //printf("%.6f  %.6f \n",G * (*(currentValues + SIZE)),G * (*(currentValues + 2 * SIZE -1)));
+        *(currentValues) = G * (*(currentValues + 1));
+        *(currentValues+SIZE-1) = G * (*(currentValues + SIZE - 2));
+        //printf("Top Corners: %.6f  %.6f \n",G * (*(currentValues + 1)),G * (*(currentValues + SIZE - 2)));
       }
       //bottom corners
       if(rank == numProcess-1){
-        //bottom left
-        int index = SIZE * endRow;
-        //printf("Index: %d\n",index);
-        *(currentValues +SIZE*(endRow)) = G * (*(currentValues + SIZE*(endRow) + 1));
-        *(currentValues + SIZE*(endRow) + SIZE -1) = G * (*(currentValues + SIZE*(endRow) + SIZE -2));
-        //printf("%.6f   %.6f\n",*(currentValues +SIZE*(endRow)),*(currentValues + SIZE*(endRow) + SIZE -1));
+        int offset = SIZE * (workEach-1);
+        *(currentValues + offset) = G * (*(currentValues + offset + 1));
+        //printf("\n%.6f\n",*(currentValues + offset + 1));
+        *(currentValues + offset + SIZE -1) = G * (*(currentValues + offset + SIZE - 2));
+        //printf("Bottom Corners: %.6f   %.6f\n",G * (*(currentValues + offset + 1)),G * (*(currentValues + offset + SIZE - 2)));
       }
 
-      MPI_Barrier(MPI_COMM_WORLD);
-    }
-
-
-    if( indexVal >= minIndex && indexVal <= maxIndex){
-      printf("%.6f\n",*(currentValues + indexVal - minIndex));
+      if( indexVal >= minIndex && indexVal <= maxIndex){
+        printf("%.6f\n",*(currentValues + indexVal - minIndex));
+      }
     }
 
     // Finalize the MPI environment.
