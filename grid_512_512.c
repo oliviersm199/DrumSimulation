@@ -105,12 +105,15 @@ int main(int argc, char** argv) {
       while(startRow<endRow){
         for(int column = 1; column<SIZE-1;column++){
 
-          int leftIndex = startRow * SIZE + column - 1;
+          // calculate the indicies of where we want to update
+	  int leftIndex = startRow * SIZE + column - 1;
           int rightIndex = startRow * SIZE + column +1;
 
           int bottomIndex = (startRow+1) * SIZE + column;
           float *bottomPtr = prevValues;
 
+
+	  // for rows below and above we need to use buffers if outside of range
           int usingRowBelow = 0;
           if(bottomIndex>workEach*SIZE){
             bottomPtr = rowBelow;
@@ -129,7 +132,8 @@ int main(int argc, char** argv) {
           }
 
           int currentIndex = (startRow) * SIZE + column;
-          //printf("Iteration: %d, Left:(%d,%.6f) Right:(%d,%.6f) Bottom:(%d,%.6f) Top:(%d,%.6f) Prev:(%d,%.6f), PrevPrevValues (%d,%.6f)   UsedRowAbove: %d  UsedRowBelow %d  Rank %d\n",i,leftIndex, *(prevValues+leftIndex),rightIndex,*(prevValues+rightIndex), bottomIndex,*(bottomPtr+bottomIndex),topIndex,*(topPtr+topIndex),currentIndex,*(prevValues+currentIndex),currentIndex,*(prevprevValues+currentIndex),usingRowAbove,usingRowBelow,rank);
+
+	  // get values for interior equation and then calculate the new value
           float leftValue = *(prevValues+leftIndex);
           float rightValue = *(prevValues+rightIndex);
           float bottomValue = *(bottomPtr+bottomIndex);
@@ -137,16 +141,12 @@ int main(int argc, char** argv) {
           float prevValue = *(prevValues+currentIndex);
           float prevPrevValue = *(prevprevValues+currentIndex);
           float newValue = ((RHO * (leftValue + rightValue + bottomValue + topValue- 4 * prevValue)) + 2 * prevValue - (1-ETA) * prevPrevValue)/(1 + ETA);
-          *(currentValues+currentIndex)=newValue;
-          //printf("Iteration: %d Value %.6f, Position: %d Rank %d\n",i,*(currentValues+currentIndex),SIZE*SIZE/numProcess*rank+currentIndex,rank);
+          
+	  // updating value 
+	  *(currentValues+currentIndex)=newValue;
       }
         startRow++;
       }
-
-
-      //wait until you've completed the interior before you do the sides
-      //MPI_Barrier(MPI_COMM_WORLD);
-
 
       //reset the start row and endRow depending on which process you are in 
       startRow=0;
@@ -165,7 +165,6 @@ int main(int argc, char** argv) {
         float newLeftVal = G * (*(currentValues +leftOffset+1));
         *(currentValues + leftOffset) =  newLeftVal;
         int actualPosition = SIZE * SIZE / numProcess * rank;
-        //printf("Iteration %d Left Side Update from %d to %d   %.6f\n",i,leftOffset+1+actualPosition,leftOffset+actualPosition,newLeftVal);
       }
 
       //go through right side
@@ -174,14 +173,12 @@ int main(int argc, char** argv) {
         float newRightVal = G * (*(currentValues + rightOffset-1));
         *(currentValues + rightOffset) = newRightVal;
         int actualPosition = SIZE * SIZE / numProcess * rank;
-        //printf("Iteration %d Right Side Update: from %d to %d   %.6f\n",i,rightOffset-1+actualPosition,rightOffset+actualPosition,newRightVal);
       }
 
       //do the top
       if(rank == 0){
         for(int j = 1;j<SIZE-1;j++){
           *(currentValues + j) = G * (*(currentValues + SIZE + j));
-          //printf("Iteration: %d J: %d  Value: %.6f\n",i,j,G * (*(currentValues + SIZE + j)));
         }
       }
 
@@ -194,26 +191,20 @@ int main(int argc, char** argv) {
           float bottomValue = G* (*(currentValues + bottomTop));
           *(currentValues + bottomIndex) = bottomValue;
           int actualPosition = SIZE * SIZE / numProcess * rank;
-          //printf("Iteration: %d Bottom %d  BottomTop %d Value %.6f\n",i,bottomIndex + actualPosition, bottomTop + actualPosition,bottomValue);
        }
       }
 
-      //wait until you've completed the sides before you do the corners
-      //MPI_Barrier(MPI_COMM_WORLD);
 
       //top corners
       if(rank == 0){
         *(currentValues) = G * (*(currentValues + 1));
         *(currentValues+SIZE-1) = G * (*(currentValues + SIZE - 2));
-        //printf("Iteration: %d Top Corners: %.6f  %.6f \n",i,G * (*(currentValues + 1)),G * (*(currentValues + SIZE - 2)));
       }
       //bottom corners
       if(rank == numProcess-1){
         int offset = SIZE * (workEach-1);
         *(currentValues + offset) = G * (*(currentValues + offset + 1));
-        //printf("\n%.6f\n",*(currentValues + offset + 1));
         *(currentValues + offset + SIZE -1) = G * (*(currentValues + offset + SIZE - 2));
-        //printf("Iteration: %d Bottom Corners: %.6f   %.6f\n",i,G * (*(currentValues + offset + 1)),G * (*(currentValues + offset + SIZE - 2)));
       }
 
       //if you are the process that contains the middle value, print it
