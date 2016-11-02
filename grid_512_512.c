@@ -7,10 +7,9 @@
 #define ETA 0.0002
 #define RHO 0.5
 #define G 0.75
-#define SIZE 4
+#define SIZE 512
 #define STRIKEX SIZE/2
 #define STRIKEY SIZE/2
-
 
 void exchange(int sendingProcess, int receiveProcess, float* sendingData,float* receiveBuffer,int size){
   // Request for non-blocking communication
@@ -41,7 +40,7 @@ int main(int argc, char** argv) {
     }
 
     iterations = strtol(argv[1], &ptr, 10);
-    if(iterations <= 0){
+    if(iterations < 0){
         printf("Invalid input, please input a positive integer for the number of iterations\n");
         exit(0);
     }
@@ -54,6 +53,8 @@ int main(int argc, char** argv) {
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+:q
+:q
 
     //calculating how many rows each process is responsible for
     int workEach = SIZE / numProcess;
@@ -73,17 +74,20 @@ int main(int argc, char** argv) {
     float *rowBelow = (float *)calloc(SIZE,sizeof(float));
     float *rowAbove = (float *)calloc(SIZE,sizeof(float));
 
-    //strike the drum but only in the process that really contains the center
-    int bottomVal = workEach * rank;
-    int topVal = workEach * rank + workEach;
-    if( STRIKEX >= bottomVal && STRIKEY < topVal){
-      *(currentValues + SIZE/2) = 1;
-      //printf("StrikeX:%d, StrikeY:%d, Rank: %d\n",STRIKEX,STRIKEY,rank);
-      //printf("Current values:%f",*(currentValues + SIZE/2));
+    // strike the drum in the center with a value of 1, but only in the process which really has the minimum
+    int minIndex = startingRow * SIZE;
+    int maxIndex = minIndex + workEach * SIZE -1;
+    int indexVal = STRIKEX * SIZE + STRIKEY;
 
+    if( indexVal >= minIndex && indexVal <= maxIndex){
+      //printf("Min Value %d, Top Value %d  Index Val %d   Actual Offset in Proc:%d\n",minIndex,maxIndex, indexVal,indexVal -minIndex);
+      *(currentValues + indexVal - minIndex) = 1;
     }
 
+    MPI_Barrier(MPI_COMM_WORLD);
+
     for(int i =0;i<iterations;i++){
+      //copy the previous values into the prevprev values and the current values into the present values
       memcpy(prevprevValues,prevValues,workEach * SIZE * sizeof(float));
       memcpy(prevValues,currentValues ,workEach * SIZE * sizeof(float));
 
@@ -109,8 +113,11 @@ int main(int argc, char** argv) {
       //updating center interior
       while(startRow<endRow){
         for(int column = 1; column<SIZE-1;column++){
+
+
           int leftIndex = startRow * SIZE + column - 1;
           int rightIndex = startRow * SIZE + column +1;
+
           int bottomIndex = (startRow+1) * SIZE + column;
           float *bottomPtr = prevValues;
           if(bottomIndex>workEach*SIZE){
@@ -124,32 +131,27 @@ int main(int argc, char** argv) {
             topPtr = rowAbove;
             topIndex = column;
           }
+
           int currentIndex = (startRow) * SIZE + column;
-          //printf("Left:(%d,%.2f) Right:(%d,%.2f) Bottom:(%d,%.2f) Top:(%d,%.2f) Current:(%d,%.2f)\n",leftIndex, *(prevValues+leftIndex),rightIndex,*(prevValues+rightIndex), bottomIndex,*(bottomPtr+bottomIndex),topIndex,*(topPtr+topIndex),currentIndex,*(prevValues+currentIndex));
 
 
+
+          //printf("Left:(%d,%.5f) Right:(%d,%.5f) Bottom:(%d,%.5f) Top:(%d,%.5f) Prev:(%d,%.5f), PrevPrevValues %.5f\n",leftIndex, *(prevValues+leftIndex),rightIndex,*(prevValues+rightIndex), bottomIndex,*(bottomPtr+bottomIndex),topIndex,*(topPtr+topIndex),currentIndex,*(prevValues+currentIndex),*(prevprevValues+currentIndex));
           float leftValue = *(prevValues+leftIndex);
           float rightValue = *(prevValues+rightIndex);
           float bottomValue = *(bottomPtr+bottomIndex);
           float topValue = *(topPtr+topIndex);
           float prevValue = *(prevValues+currentIndex);
           float prevPrevValue = *(prevprevValues+currentIndex);
-          float newValue = RHO * (leftValue + rightValue + bottomValue + topValue-4 * prevValue) + 2 * prevValue - (1-ETA) * prevPrevValue;
+          float newValue = ((RHO * (leftValue + rightValue + bottomValue + topValue- 4 * prevValue)) + 2 * prevValue - (1-ETA) * prevPrevValue)/(1 + ETA);
           *(currentValues+currentIndex)=newValue;
+          //printf("Value %.6f, Position: %d Rank %d\n",*(currentValues+currentIndex),SIZE*SIZE/numProcess*rank+currentIndex,rank);
       }
         startRow++;
       }
 
-      //completed the interior now we have to update the sides
-      MPI_Barrier(MPI_COMM_WORLD);
 
-      //reupdate the top and bottom
-      if(rank-1>=0){
-        exchange(rank,rank-1,prevValues,rowAbove,SIZE);
-      }
-      if(rank+1<numProcess){
-        exchange(rank,rank+1,prevValues + (workEach * SIZE)-SIZE,rowBelow,SIZE);
-      }
+      MPI_Barrier(MPI_COMM_WORLD);
 
       startRow=0;
       if(rank == 0){
@@ -163,47 +165,66 @@ int main(int argc, char** argv) {
 
       //go through left side
       for(int i = startRow; i < endRow;i++){
-        //printf("Rank %d Left Side Update %d\n",rank,SIZE*i);
-        *(currentValues + (SIZE * i)) = G * (*(prevValues + (SIZE * i) + 1));
+        int leftOffset = startRow * SIZE;
+        float newLeftVal = G * (*(currentValues +leftOffset+1));
+        *(currentValues + leftOffset) =  newLeftVal;
+        int actualPosition = SIZE * SIZE / numProcess * rank;
+        //printf("from %d to %d   %.6f\n",leftOffset+1+actualPosition,leftOffset+actualPosition,newLeftVal);
       }
 
       //go through right side
       for(int i = startRow;i<endRow;i++){
-        //printf("Rank %d Right Side Update %d\n",rank,SIZE*i+SIZE-1);
-        *(currentValues + (SIZE * i) + SIZE-1) = G * (*(prevValues + (SIZE * i) + SIZE - 2));
+        int rightOffset = (SIZE * i) + SIZE - 1;
+        float newRightVal = G * (*(currentValues + rightOffset-1));
+        *(currentValues + rightOffset) = newRightVal;
+        int actualPosition = SIZE * SIZE / numProcess * rank;
+        //printf("from %d to %d   %.6f\n",rightOffset-1+actualPosition,rightOffset+actualPosition,newRightVal);
       }
 
       //do the top
       if(rank == 0){
         for(int j = 1;j<SIZE-1;j++){
-          //printf("Rank %d Top: %d\n",rank,j);
-          *(currentValues+j) = G * (*(prevValues + SIZE + j));
+          *(currentValues + j) = G * (*(currentValues + SIZE + j));
+          //printf("J: %d  Value: %.6f\n",j,G * (*(currentValues + SIZE + j)));
         }
       }
 
       //do the bottom
       if(rank==numProcess-1){
         for(int j = 1;j<SIZE-1;j++){
-          //printf("Rank %d Bottom: %d    %d\n",rank,SIZE*(endRow)+j,SIZE*(endRow-1) + j);
-          *(currentValues + SIZE*(endRow) + j) = G * (*(currentValues + SIZE*(endRow-1) + j));
+          int offsetStart = endRow*SIZE;
+          int bottomIndex = offsetStart + j;
+          int bottomTop = bottomIndex - SIZE;
+          float bottomValue = G* (*(currentValues + bottomTop));
+          *(currentValues + bottomIndex) = bottomValue;
+          int actualPosition = SIZE * SIZE / numProcess * rank;
+          //printf("Bottom %d  BottomTop %d Value %.6f\n",bottomIndex + actualPosition, bottomTop + actualPosition,bottomValue);
        }
       }
 
-      //completed sides now corners
       MPI_Barrier(MPI_COMM_WORLD);
-
       //top corners
       if(rank == 0){
         *(currentValues) = G * (*(currentValues + SIZE));
         *(currentValues+SIZE-1) = G * (*(currentValues + 2 * SIZE -1));
+        //printf("%.6f  %.6f \n",G * (*(currentValues + SIZE)),G * (*(currentValues + 2 * SIZE -1)));
       }
       //bottom corners
       if(rank == numProcess-1){
         //bottom left
+        int index = SIZE * endRow;
+        //printf("Index: %d\n",index);
         *(currentValues +SIZE*(endRow)) = G * (*(currentValues + SIZE*(endRow) + 1));
-        //bottom right
         *(currentValues + SIZE*(endRow) + SIZE -1) = G * (*(currentValues + SIZE*(endRow) + SIZE -2));
+        //printf("%.6f   %.6f\n",*(currentValues +SIZE*(endRow)),*(currentValues + SIZE*(endRow) + SIZE -1));
       }
+
+      MPI_Barrier(MPI_COMM_WORLD);
+    }
+
+
+    if( indexVal >= minIndex && indexVal <= maxIndex){
+      printf("%.6f\n",*(currentValues + indexVal - minIndex));
     }
 
     // Finalize the MPI environment.
