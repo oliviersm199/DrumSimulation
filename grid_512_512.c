@@ -10,6 +10,7 @@
 #define SIZE 512
 #define STRIKEX SIZE/2
 #define STRIKEY SIZE/2
+#define STRIKE 1
 
 void exchange(int sendingProcess, int receiveProcess, float* sendingData,float* receiveBuffer,int size){
   // Request for non-blocking communication
@@ -18,12 +19,6 @@ void exchange(int sendingProcess, int receiveProcess, float* sendingData,float* 
   MPI_Sendrecv(sendingData,size,MPI_FLOAT,receiveProcess,TAG,receiveBuffer,size,MPI_FLOAT,receiveProcess,TAG,MPI_COMM_WORLD,&status);
 }
 
-
-void setValue(float value,float * memory, int size){
-  for(int i =0;i<size;i++){
-    *(memory + i)+=value;
-  }
-}
 
 int main(int argc, char** argv) {
     // Initialize the MPI environment
@@ -65,7 +60,6 @@ int main(int argc, char** argv) {
     float *prevValues    = (float * )calloc(workEach * SIZE,sizeof(float));
     float *prevprevValues= (float *)calloc(workEach * SIZE,sizeof(float));
 
-    //printf("WorkEach%d,Size%d\n",workEach,SIZE);
 
     //row below and row above buffers for interior
     float *rowBelow = (float *)calloc(SIZE,sizeof(float));
@@ -76,12 +70,12 @@ int main(int argc, char** argv) {
     int maxIndex = minIndex + workEach * SIZE -1;
     int indexVal = STRIKEX * SIZE + STRIKEY;
 
+
+    //strike the center value 
     if( indexVal >= minIndex && indexVal <= maxIndex){
-      //printf("Min Value %d, Top Value %d  Index Val %d   Actual Offset in Proc:%d\n",minIndex,maxIndex, indexVal,indexVal -minIndex);
-      *(currentValues + indexVal - minIndex) = 1;
+      *(currentValues + indexVal - minIndex) = STRIKE;
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
 
     for(int i =0;i<iterations;i++){
       //copy the previous values into the prevprev values and the current values into the present values
@@ -149,8 +143,12 @@ int main(int argc, char** argv) {
         startRow++;
       }
 
-      MPI_Barrier(MPI_COMM_WORLD);
 
+      //wait until you've completed the interior before you do the sides
+      //MPI_Barrier(MPI_COMM_WORLD);
+
+
+      //reset the start row and endRow depending on which process you are in 
       startRow=0;
       if(rank == 0){
         startRow +=1;
@@ -200,8 +198,9 @@ int main(int argc, char** argv) {
        }
       }
 
+      //wait until you've completed the sides before you do the corners
+      //MPI_Barrier(MPI_COMM_WORLD);
 
-      MPI_Barrier(MPI_COMM_WORLD);
       //top corners
       if(rank == 0){
         *(currentValues) = G * (*(currentValues + 1));
@@ -217,11 +216,10 @@ int main(int argc, char** argv) {
         //printf("Iteration: %d Bottom Corners: %.6f   %.6f\n",i,G * (*(currentValues + offset + 1)),G * (*(currentValues + offset + SIZE - 2)));
       }
 
+      //if you are the process that contains the middle value, print it
       if( indexVal >= minIndex && indexVal <= maxIndex){
         printf("%.6f,\n",*(currentValues + indexVal - minIndex));
       }
-
-      MPI_Barrier(MPI_COMM_WORLD);
     }
 
     // Finalize the MPI environment.
